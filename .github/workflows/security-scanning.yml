@@ -1,0 +1,60 @@
+name: Security Scanning
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Monday
+  workflow_dispatch:
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # npm audit
+      - uses: actions/setup-node@v4
+        if: hashFiles('package-lock.json')
+        with:
+          node-version: '20'
+      
+      - name: Run npm audit
+        if: hashFiles('package-lock.json')
+        run: npm audit --audit-level=high || true
+      
+      # pip audit
+      - name: Install pip-audit
+        if: hashFiles('requirements.txt')
+        run: pip install pip-audit
+      
+      - name: Run pip audit
+        if: hashFiles('requirements.txt')
+        run: pip-audit -r requirements.txt || true
+      
+      # Cargo audit
+      - name: Install cargo-audit
+        if: hashFiles('Cargo.lock')
+        run: |
+          cargo install cargo-audit --locked || true
+      
+      - name: Run cargo audit
+        if: hashFiles('Cargo.lock')
+        run: cargo audit || true
+
+  vulnerability-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
